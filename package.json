@@ -1,0 +1,31 @@
+{
+  "name": "sitemonitor",
+  "version": "1.0.0",
+  "description": "seo management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "pull": "git pull origin main",
+    "dev": "nodemon server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.8.2",
+    "multer": "^2.1.1",
+    "nodemailer": "^8.0.4",
+    "nodemon": "^3.1.11",
+    "ora": "^9.3.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^13.0.0"
+  }
+}
