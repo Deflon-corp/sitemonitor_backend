@@ -35,7 +35,6 @@ const startScan = async (domainId, domainUrl, conn) => {
   const { DomainScanMaster } = getModels(conn);
 
   // Check if there is already a scan running or pending
-  /* 
   const existingActive = await DomainScanMaster.findOne({
     domain_id: domainId,
     status: { $in: ["pending", "scanning"] },
@@ -48,7 +47,6 @@ const startScan = async (domainId, domainUrl, conn) => {
       scanId: existingActive._id,
     };
   }
-  */
 
   // Create a pending master scan record
   const scanMaster = await DomainScanMaster.create({
@@ -354,18 +352,6 @@ const getInventoryHistory = async (domainId, conn) => {
         status: "completed"
       } 
     },
-    { $sort: { "createdAt": -1 } },
-    {
-      $group: {
-        _id: {
-          year: { $year: "$createdAt" },
-          month: { $month: "$createdAt" },
-          day: { $dayOfMonth: "$createdAt" }
-        },
-        doc: { $first: "$$ROOT" }
-      }
-    },
-    { $replaceRoot: { newRoot: "$doc" } },
     { $sort: { "createdAt": -1 } },
     { $limit: 14 }
   ]);
