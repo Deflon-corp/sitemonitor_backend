@@ -8,6 +8,7 @@ const {
   login_admin,
   refresh_admin_token,
   get_admin_list,
+  get_admin_by_id,
 } = require("../controllers/admin.controller");
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.post("/", superAdminMiddleware, uploadMiddleware.single("profile_image"),
 
 // Get all admins (requires logged-in super admin)
 router.get("/", superAdminMiddleware, get_admin_list);
+
+// Get single admin by ID
+router.get("/:admin_id", get_admin_by_id);
 
 // Update admin
 router.put("/:admin_id", uploadMiddleware.single("profile_image"), update_admin);

@@ -6,6 +6,7 @@ const {
   login_admin_service,
   refresh_admin_token_service,
   get_admin_list_service,
+  get_admin_by_id_service,
 } = require("../services/admin.service");
 const { getBearerToken } = require("../../../common/middlewares/auth.middleware");
 
@@ -235,6 +236,26 @@ async function get_admin_list(req, res) {
   }
 }
 
+/**
+ * get_admin_by_id
+ * Params: :admin_id
+ */
+async function get_admin_by_id(req, res) {
+  try {
+    const result = await get_admin_by_id_service({
+      tenantConnection: req.tenantConnection,
+      params: req.params,
+    });
+    return res.status(result.statusCode).json(result);
+  } catch (err) {
+    console.error("get_admin_by_id error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve admin",
+    });
+  }
+}
+
 module.exports = {
   create_admin,
   update_admin,
@@ -242,5 +263,6 @@ module.exports = {
   login_admin,
   refresh_admin_token,
   get_admin_list,
+  get_admin_by_id,
 };
 

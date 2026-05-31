@@ -739,6 +739,33 @@ async function get_admin_list_service({ tenantConnection, query }) {
   };
 }
 
+async function get_admin_by_id_service({ tenantConnection, params }) {
+  const Admin = getAdminModel(tenantConnection);
+  const { admin_id } = params;
+
+  const admin = await Admin.findOne({
+    admin_id: Number(admin_id),
+    admin_is_deleted: false,
+  })
+    .select("-admin_password -admin_otp -admin_otp_expiry")
+    .lean();
+
+  if (!admin) {
+    return {
+      statusCode: 404,
+      success: false,
+      message: "Admin not found",
+    };
+  }
+
+  return {
+    statusCode: 200,
+    success: true,
+    message: "Admin retrieved successfully",
+    data: admin,
+  };
+}
+
 module.exports = {
   create_admin_service,
   create_tenant_and_admin_service,
@@ -750,5 +777,6 @@ module.exports = {
   admin_login_by_id,
   refresh_admin_token_service,
   get_admin_list_service,
+  get_admin_by_id_service,
 };
 
