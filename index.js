@@ -19,6 +19,7 @@ const auditRouter = require("./src/modules/audit/routes/audit.routes");
 const heartbeatRouter = require("./src/modules/heartbeat/routes/heartbeat.routes");
 const domainPerformanceRouter = require("./src/modules/performance/routes/domainPerformance.routes");
 const qaRouter = require("./src/modules/qa/routes/qa.routes");
+const accessibilityRouter = require("./src/modules/accessibility/routes/accessibility.routes");
 
 
 
@@ -132,6 +133,7 @@ app.use("/api/audit", apiRateLimiter, tenantConnectionMiddleware, auditRouter);
 app.use("/api/heartbeat", apiRateLimiter, tenantConnectionMiddleware, heartbeatRouter);
 app.use("/api/domain/performance", apiRateLimiter, tenantConnectionMiddleware, domainPerformanceRouter);
 app.use("/api/qa", apiRateLimiter, tenantConnectionMiddleware, qaRouter);
+app.use("/api/accessibility", apiRateLimiter, tenantConnectionMiddleware, accessibilityRouter);
 
 
 
