@@ -46,7 +46,7 @@ app.use(
       }
 
       // allow all subdomains like *.sitemonitor.in
-      const sitemonitorRegex = /^https:\/\/([a-zA-Z0-9.-]+)\.sitemonitor\.in$/;
+      const sitemonitorRegex = /^https:\/\/([a-zA-Z0-9.-]+)\.darksite\.in$/;
       if (sitemonitorRegex.test(origin)) {
         return callback(null, true);
       }
