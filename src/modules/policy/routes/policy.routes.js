@@ -9,6 +9,7 @@ const {
   get_policy_stats,
   get_policy_reports,
   get_policy_content_matches,
+  scan_domain_policies,
 } = require("../controllers/policy.controller");
 
 
@@ -28,6 +29,9 @@ router.get("/stats", get_policy_stats);
 
 // Get content matches (pages with policy hits)
 router.get("/content-matches", get_policy_content_matches);
+
+// Trigger a scan for a domain's policies
+router.post("/scan/:domainId", scan_domain_policies);
 
 
 // Get policy by ID

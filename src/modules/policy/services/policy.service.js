@@ -22,6 +22,11 @@ const get_policy_report_model = (connection) => {
   return connection.models.PolicyReport || connection.model("PolicyReport", policyReportSchema);
 };
 
+const get_domain_page_model = (connection) => {
+  const { domainPageSchema } = require("../../inventory/models/domainPage.schema");
+  return connection.models.DomainPage || connection.model("DomainPage", domainPageSchema, "domain_pages");
+};
+
 /**
  * create_policy_service
  */
@@ -268,95 +273,98 @@ async function delete_policy_service({ tenantConnection, params }) {
 
 /**
  * get_policy_stats_service
+ * Fetches stats from the latest PolicySummary for the dashboard charts.
  */
 async function get_policy_stats_service({ tenantConnection, query, tenantId }) {
   try {
-    get_domain_model(tenantConnection); // Register Domain model
-    const Policy = get_policy_model(tenantConnection);
-    const PolicyReport = get_policy_report_model(tenantConnection);
+    const PolicySummary = get_policy_summary_model(tenantConnection);
+    const Domain = get_domain_model(tenantConnection);
 
     const { domainId } = query;
     let targetObjectId = domainId;
+    let isScanning = false;
+    
     if (domainId && !mongoose.Types.ObjectId.isValid(domainId)) {
-      const Domain = get_domain_model(tenantConnection);
       const domainDoc = await Domain.findOne({ dm_id: Number(domainId) });
-      if (domainDoc) targetObjectId = domainDoc._id;
+      if (domainDoc) {
+        targetObjectId = domainDoc._id;
+        if (domainDoc.dm_policy_status === 'scanning') isScanning = true;
+      }
+    } else if (domainId) {
+      const domainDoc = await Domain.findById(domainId);
+      if (domainDoc && domainDoc.dm_policy_status === 'scanning') isScanning = true;
     }
 
-    const filter = { tenantId, is_deleted: false };
-    if (targetObjectId) {
-      filter.$or = [
-        { isGlobal: true },
-        { domainIds: targetObjectId }
-      ];
+    if (!targetObjectId) {
+      return { success: false, statusCode: 404, message: "Domain not found" };
     }
 
-    const policies = await Policy.find(filter);
+    // Fetch the last 7 summaries to build the trend line
+    const recentSummaries = await PolicySummary.find({ 
+      domainId: targetObjectId 
+    })
+    .sort({ scanDate: -1 })
+    .limit(7)
+    .lean();
 
-    const reportFilter = {};
-    if (targetObjectId && mongoose.Types.ObjectId.isValid(targetObjectId)) {
-      reportFilter.domainId = new mongoose.Types.ObjectId(targetObjectId);
+    if (!recentSummaries || recentSummaries.length === 0) {
+      return {
+        success: true,
+        statusCode: 200,
+        message: "No policy scan data available.",
+        data: {
+          priorities: [
+            { label: "High", value: 0 },
+            { label: "Medium", value: 0 },
+            { label: "Low", value: 0 },
+          ],
+          distribution: [
+            { label: "Unwanted", value: 0 },
+            { label: "Required", value: 0 },
+            { label: "Matches", value: 0 },
+          ],
+          policiesWithViolations: 0,
+          contentWithViolations: 0,
+          compliancePercent: 100,
+          trend: [],
+          isScanning
+        },
+      };
     }
 
+    const latestSummary = recentSummaries[0];
+
+    // Format for charts
     const priorities = [
-      { label: "High", value: policies.filter((p) => p.priority === "High").length },
-      { label: "Medium", value: policies.filter((p) => p.priority === "Medium").length },
-      { label: "Low", value: policies.filter((p) => p.priority === "Low").length },
+      { label: "High", value: latestSummary.priorities?.high || 0 },
+      { label: "Medium", value: latestSummary.priorities?.medium || 0 },
+      { label: "Low", value: latestSummary.priorities?.low || 0 },
     ];
 
     const distribution = [
-      { label: "Unwanted", value: policies.filter((p) => p.category === "unwanted").length },
-      { label: "Required", value: policies.filter((p) => p.category === "required").length },
-      { label: "Matches", value: policies.filter((p) => p.category === "matches").length },
+      { label: "Unwanted", value: latestSummary.distribution?.unwanted || 0 },
+      { label: "Required", value: latestSummary.distribution?.required || 0 },
+      { label: "Matches", value: latestSummary.distribution?.matches || 0 },
     ];
 
-    const policiesWithViolations = policies.filter((p) => (p.policyHits || 0) > 0).length;
-    
-    // Count unique pages with violations
-    const uniquePagesRaw = await PolicyReport.distinct("url", reportFilter);
-    const contentWithViolations = uniquePagesRaw.length;
-    
-    // Calculate overall compliance (simple average for now)
-    const compliancePercent = policies.length > 0 
-      ? policies.reduce((acc, p) => acc + (p.compliancePercent || 0), 0) / policies.length 
-      : 100;
-
-    // Get trend data (last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const trendRaw = await PolicyReport.aggregate([
-      { $match: { ...reportFilter, scanDate: { $gte: sevenDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$scanDate" } },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    // Fill in missing days
-    const trend = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      const dateStr = d.toISOString().split("T")[0];
-      const match = trendRaw.find(t => t._id === dateStr);
-      trend.push({ label: dateStr, value: match ? match.count : 0 });
-    }
+    // Format trend (reverse to put oldest first)
+    const trend = recentSummaries.reverse().map(summary => ({
+      label: new Date(summary.scanDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value: summary.contentWithViolations || 0
+    }));
 
     return {
       success: true,
       statusCode: 200,
-      message: "Policy stats retrieved successfully",
+      message: "Policy stats fetched successfully",
       data: {
         priorities,
         distribution,
-        policiesWithViolations,
-        contentWithViolations,
-        compliancePercent,
+        policiesWithViolations: latestSummary.policiesWithViolations || 0,
+        contentWithViolations: latestSummary.contentWithViolations || 0,
+        compliancePercent: latestSummary.compliancePercent || 100,
         trend,
+        isScanning
       },
     };
   } catch (err) {
@@ -364,7 +372,7 @@ async function get_policy_stats_service({ tenantConnection, query, tenantId }) {
     return {
       success: false,
       statusCode: 500,
-      message: "Failed to retrieve policy stats",
+      message: "Failed to fetch policy stats",
     };
   }
 }
@@ -403,6 +411,7 @@ async function get_policy_reports_service({ tenantConnection, params, query }) {
 async function get_policy_content_matches_service({ tenantConnection, query, tenantId }) {
   try {
     get_domain_model(tenantConnection);
+    get_policy_model(tenantConnection);
     const PolicyReport = get_policy_report_model(tenantConnection);
     const { domainId, limit = 100 } = query;
 
@@ -418,44 +427,22 @@ async function get_policy_content_matches_service({ tenantConnection, query, ten
       matchFilter.domainId = new mongoose.Types.ObjectId(targetObjectId);
     }
 
-    const matches = await PolicyReport.aggregate([
-      { $match: matchFilter },
-      { $sort: { scanDate: -1 } },
-      {
-        $group: {
-          _id: "$url",
-          url: { $first: "$url" },
-          domainName: { $first: "$domainName" },
-          unwanted: { $sum: { $cond: [{ $eq: ["$category", "unwanted"] }, 1, 0] } },
-          required: { $sum: { $cond: [{ $eq: ["$category", "required"] }, 1, 0] } },
-          matches: { $sum: { $cond: [{ $eq: ["$category", "matches"] }, 1, 0] } },
-          highestPriority: {
-            $min: {
-              $cond: [
-                { $eq: ["$priority", "High"] }, 1,
-                { $cond: [{ $eq: ["$priority", "Medium"] }, 2, 3] }
-              ]
-            }
-          }
-        }
-      },
-      {
-        $project: {
-          url: 1,
-          domainName: 1,
-          unwanted: 1,
-          required: 1,
-          matches: 1,
-          priority: {
-            $cond: [
-              { $eq: ["$highestPriority", 1] }, "High",
-              { $cond: [{ $eq: ["$highestPriority", 2] }, "Medium", "Low"] }
-            ]
-          }
-        }
-      },
-      { $limit: parseInt(limit) }
-    ]);
+    const rawMatches = await PolicyReport.find(matchFilter)
+      .populate({ path: 'policyId', model: 'Policy', select: 'title' })
+      .sort({ scanDate: -1 })
+      .limit(parseInt(limit))
+      .lean();
+
+    const matches = rawMatches.map(m => ({
+      _id: m._id,
+      url: m.url,
+      domainName: m.domainName,
+      policyName: m.policyId?.title || 'Unknown Policy',
+      category: m.category,
+      priority: m.priority,
+      matchCount: m.matchCount,
+      scanDate: m.scanDate
+    }));
 
     return {
       success: true,
@@ -473,6 +460,98 @@ async function get_policy_content_matches_service({ tenantConnection, query, ten
   }
 }
 
+/**
+ * scan_domain_policies_service
+ * Triggers the policy scan job on the master microservice
+ */
+async function scan_domain_policies_service({ tenantConnection, domainId, tenantId }) {
+  try {
+    const Domain = get_domain_model(tenantConnection);
+
+    let targetObjectId = domainId;
+    if (domainId && !mongoose.Types.ObjectId.isValid(domainId)) {
+      const domainDoc = await Domain.findOne({ dm_id: Number(domainId) });
+      if (domainDoc) targetObjectId = domainDoc._id;
+    }
+
+    if (!targetObjectId) {
+      return { success: false, statusCode: 404, message: "Domain not found" };
+    }
+
+    const domainDoc = await Domain.findById(targetObjectId);
+    const domainName = domainDoc ? domainDoc.dm_title || domainDoc.dm_url : "Unknown Domain";
+    
+    // Trigger the master microservice
+    const MASTER_URL = process.env.MASTER_MS_URL || "http://localhost:4100";
+    const dbName = tenantConnection.name;
+    const dbUri = process.env.DB_URL || process.env.MONGODB_URI;
+
+    console.log(`📤 [PolicyService] Enqueuing policy scan job to master ms for domain: ${domainName}`);
+    
+    const response = await fetch(`${MASTER_URL}/scan/policy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dm_url: domainName,
+        domainId: targetObjectId,
+        sourceDb: dbName,
+        sourceUri: dbUri,
+      }),
+    });
+
+    if (!response.ok) {
+      const resData = await response.json().catch(() => ({}));
+      console.error(`❌ [PolicyService] Failed to enqueue master policy scan job`, resData);
+      throw new Error(resData?.error || "Failed to enqueue master policy scan job");
+    }
+
+    const resData = await response.json();
+    console.log(`📩 [PolicyService] Master policy scan job enqueued. Job ID: ${resData.jobId}`);
+
+    // Poll the PolicySummary table to wait for completion
+    const PolicySummary = get_policy_summary_model(tenantConnection);
+    const maxPollAttempts = 60; // 30 seconds max
+    const pollInterval = 500; // 500ms
+    let scanFinished = false;
+
+    if (resData.jobId) {
+      const jobIdStr = String(resData.jobId);
+      for (let i = 0; i < maxPollAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        const summary = await PolicySummary.findOne({ jobId: jobIdStr }).lean();
+        if (summary) {
+          scanFinished = true;
+          console.log(`✅ [PolicyService] Master policy scan job completed. Found summary in DB.`);
+          break;
+        }
+      }
+    }
+
+    if (!scanFinished) {
+      console.log(`⚠️ [PolicyService] Polling timeout reached. Master job might still be running.`);
+    }
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: scanFinished ? "Policy scan completed successfully." : "Policy scan is processing in the background.",
+      data: { jobId: resData.jobId }
+    };
+  } catch (err) {
+    console.error("scan_domain_policies_service error:", err);
+    return {
+      success: false,
+      statusCode: 500,
+      message: "Failed to scan domain policies",
+    };
+  }
+}
+
+function get_policy_summary_model(connection) {
+  const { policySummarySchema } = require("../models/policySummary.schema");
+  return connection.model("PolicySummary", policySummarySchema);
+}
+
 module.exports = {
   create_policy_service,
   get_policy_list_service,
@@ -482,5 +561,6 @@ module.exports = {
   get_policy_stats_service,
   get_policy_reports_service,
   get_policy_content_matches_service,
+  scan_domain_policies_service,
 };
 

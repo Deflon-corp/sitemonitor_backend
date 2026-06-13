@@ -46,6 +46,7 @@ const policyReportSchema = new mongoose.Schema(
         isMatch: Boolean,
         matchCount: Number,
         totalCount: Number,
+        matchedText: [String],
       },
     ],
     evaluationResults: [
@@ -55,6 +56,7 @@ const policyReportSchema = new mongoose.Schema(
         isMatch: Boolean,
         matchCount: Number,
         totalCount: Number,
+        matchedText: [String],
       },
     ],
     scanDate: {

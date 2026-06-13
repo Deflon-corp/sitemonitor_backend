@@ -161,7 +161,7 @@ function mapMisspellingsForPage(list = []) {
   }));
 }
 
-function buildPageDetailPayload(qaDoc, domainDoc, policyReports = []) {
+function buildPageDetailPayload(qaDoc, domainDoc, policyReports = [], defaultUrl = "") {
   const brokenLinks = mapBrokenLinksForPage(qaDoc?.brokenLinks || []);
   const brokenImages = (qaDoc?.brokenImages || []).map((bi, idx) => ({
     id: idx + 1,
@@ -229,9 +229,9 @@ function buildPageDetailPayload(qaDoc, domainDoc, policyReports = []) {
   const externalLinks = domainDoc?.links?.externalUrls?.length ?? domainDoc?.links?.external ?? 0;
 
   return {
-    id: qaDoc?._id?.toString() || domainDoc?._id?.toString() || "",
-    title: qaDoc?.title || domainDoc?.meta?.title || qaDoc?.url || domainDoc?.url || "",
-    url: qaDoc?.url || domainDoc?.url || "",
+    id: qaDoc?._id?.toString() || domainDoc?._id?.toString() || policyReports?.[0]?._id?.toString() || "",
+    title: qaDoc?.title || domainDoc?.meta?.title || qaDoc?.url || domainDoc?.url || defaultUrl || "",
+    url: qaDoc?.url || domainDoc?.url || defaultUrl || "",
     httpStatus: qaDoc?.httpStatus ?? domainDoc?.httpStatus ?? 200,
     scanDate: qaDoc?.scanDate || domainDoc?.scanDate || null,
     readabilityScore: qaDoc?.readabilityScore ?? domainDoc?.textMetrics?.readabilityScore ?? 0,
@@ -267,13 +267,14 @@ function buildPageDetailPayload(qaDoc, domainDoc, policyReports = []) {
     jsAnalysis: domainDoc?.jsAnalysis || {},
     additionalChecks: domainDoc?.additionalChecks || {},
     policies: policyReports.map((pr) => ({
-      id: pr.policyId?.toString() || pr._id?.toString(),
-      name: pr.policyName || pr.matchedRules?.[0]?.ruleName || "Policy",
+      id: pr.policyId?._id?.toString() || pr.policyId?.toString() || pr._id?.toString(),
+      name: pr.policyId?.title || pr.policyName || pr.matchedRules?.[0]?.ruleName || "Policy",
       category: pr.category || "matches",
       priority: pr.priority || "Medium",
       isHit: !!pr.isHit,
       matchCount: pr.matchCount || 0,
-      note: pr.note || "—",
+      note: pr.policyId?.description || pr.note || "—",
+      matchedRules: pr.matchedRules || [],
     })),
     policyCompliancePercent,
     policyViolationsCount: policyHits.length,
@@ -337,11 +338,41 @@ async function get_qa_page_detail_service({ tenantConnection, domainId, pageUrl 
     ) ||
     null;
 
-  const policyFilter = { domainName: host, url: { $regex: new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } };
-  if (jobId) policyFilter.jobId = jobId;
-  const policyReports = await PolicyReport.find(policyFilter).lean();
+  const policyFilter = { domainId: domainDoc._id, url: { $regex: new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") } };
+  
+  if (tenantConnection.models.Policy === undefined) {
+      const { policySchema } = require("../../policy/models/policy.schema");
+      tenantConnection.model("Policy", policySchema, "policies");
+  }
 
-  if (!qaDoc && !domainPageDoc) {
+  const allPolicies = await tenantConnection.model("Policy").find({ is_deleted: false }).lean();
+  
+  const rawPolicyReports = await PolicyReport.find(policyFilter)
+    .populate({ path: "policyId", model: "Policy", select: "title description" })
+    .lean();
+
+  const enrichedPolicyReports = [...rawPolicyReports];
+  const hitPolicyIds = new Set(rawPolicyReports.map(pr => pr.policyId?._id?.toString() || pr.policyId?.toString()));
+  
+  for (const p of allPolicies) {
+    if (!hitPolicyIds.has(p._id.toString())) {
+      enrichedPolicyReports.push({
+        _id: p._id,
+        policyId: { _id: p._id, title: p.title, description: p.description },
+        domainName: host,
+        url: url,
+        isHit: false,
+        matchCount: 0,
+        totalCount: 0,
+        category: p.category || "matches",
+        priority: "Low",
+      });
+    }
+  }
+
+  const policyReports = enrichedPolicyReports;
+
+  if (!qaDoc && !domainPageDoc && policyReports.length === 0) {
     return {
       statusCode: 200,
       success: true,
@@ -377,7 +408,7 @@ async function get_qa_page_detail_service({ tenantConnection, domainId, pageUrl 
   return {
     statusCode: 200,
     success: true,
-    data: buildPageDetailPayload(qaDoc, domainPageDoc, policyReports),
+    data: buildPageDetailPayload(qaDoc, domainPageDoc, policyReports, url),
   };
 }
 

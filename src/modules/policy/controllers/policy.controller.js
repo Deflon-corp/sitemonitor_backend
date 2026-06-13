@@ -7,6 +7,7 @@ const {
   get_policy_stats_service,
   get_policy_reports_service,
   get_policy_content_matches_service,
+  scan_domain_policies_service,
 } = require("../services/policy.service");
 
 /**
@@ -138,6 +139,20 @@ async function get_policy_content_matches(req, res) {
   }
 }
 
+async function scan_domain_policies(req, res) {
+  try {
+    const result = await scan_domain_policies_service({
+      tenantConnection: req.tenantConnection,
+      domainId: req.params.domainId,
+      tenantId: req.tenantId,
+    });
+    return res.status(result.statusCode).json(result);
+  } catch (err) {
+    console.error("scan_domain_policies controller error:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
   create_policy,
   get_policy_list,
@@ -147,4 +162,5 @@ module.exports = {
   get_policy_stats,
   get_policy_reports,
   get_policy_content_matches,
+  scan_domain_policies,
 };
