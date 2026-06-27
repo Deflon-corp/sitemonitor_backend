@@ -18,6 +18,11 @@ const get_domain_model = (connection) => {
   return connection.models.Domain || connection.model("Domain", domainSchema, "domains");
 };
 
+const getUserModel = (connection) => {
+  const { userSchema } = require("../../user/models/user.model");
+  return connection.models.User || connection.model("User", userSchema, "users");
+};
+
 const get_policy_report_model = (connection) => {
   return connection.models.PolicyReport || connection.model("PolicyReport", policyReportSchema);
 };
@@ -30,7 +35,7 @@ const get_domain_page_model = (connection) => {
 /**
  * create_policy_service
  */
-async function create_policy_service({ tenantConnection, body, tenantId }) {
+async function create_policy_service({ tenantConnection, body, user, tenantId }) {
   try {
     const Policy = get_policy_model(tenantConnection);
     const { rules, title, ...policyData } = body || {};
@@ -53,8 +58,30 @@ async function create_policy_service({ tenantConnection, body, tenantId }) {
     });
     await newPolicy.save();
 
-    // Rules are now embedded in the policy document
+    // Log activity
+    try {
+      const User = getUserModel(tenantConnection);
+      const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+      const Domain = get_domain_model(tenantConnection);
+      const domainDocs = await Domain.find({ _id: { $in: newPolicy.domainIds || [] } }).select("dm_title dm_url").lean();
+      const domainNames = domainDocs.map(d => d.dm_title || d.dm_url);
 
+      await global.createActivityLog(tenantConnection, {
+        userId: loginUser?._id,
+        userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : user?.user_email || "System",
+        action: "CREATE_POLICY",
+        details: `Policy '${newPolicy.title}' was created by ${loginUser ? loginUser.user_first_name : (user?.user_email || "User")}.`,
+        metadata: { 
+          policyId: newPolicy._id, 
+          policyTitle: newPolicy.title,
+          isGlobal: newPolicy.isGlobal,
+          domainNames: newPolicy.isGlobal ? ["All Domains"] : domainNames,
+          domainUrls: newPolicy.isGlobal ? ["All Domain URLs"] : domainDocs.map(d => d.dm_url)
+        }
+      });
+    } catch (logErr) {
+      console.error("Failed to log policy creation:", logErr);
+    }
 
     return {
       success: true,
@@ -188,7 +215,7 @@ async function get_policy_by_id_service({ tenantConnection, params }) {
 /**
  * update_policy_service
  */
-async function update_policy_service({ tenantConnection, params, body, tenantId }) {
+async function update_policy_service({ tenantConnection, params, body, user, tenantId }) {
   try {
     const Policy = get_policy_model(tenantConnection);
     const Rule = get_rule_model(tenantConnection);
@@ -220,6 +247,31 @@ async function update_policy_service({ tenantConnection, params, body, tenantId 
       };
     }
 
+    // Log activity
+    try {
+      const User = getUserModel(tenantConnection);
+      const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+      const Domain = get_domain_model(tenantConnection);
+      const domainDocs = await Domain.find({ _id: { $in: updatedPolicy.domainIds || [] } }).select("dm_title dm_url").lean();
+      const domainNames = domainDocs.map(d => d.dm_title || d.dm_url);
+
+      await global.createActivityLog(tenantConnection, {
+        userId: loginUser?._id,
+        userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : user?.user_email || "System",
+        action: "UPDATE_POLICY",
+        details: `Policy '${updatedPolicy.title}' was updated by ${loginUser ? loginUser.user_first_name : (user?.user_email || "User")}.`,
+        metadata: { 
+          policyId: updatedPolicy._id, 
+          policyTitle: updatedPolicy.title,
+          isGlobal: updatedPolicy.isGlobal,
+          domainNames: updatedPolicy.isGlobal ? ["All Domains"] : domainNames,
+          domainUrls: updatedPolicy.isGlobal ? ["All Domain URLs"] : domainDocs.map(d => d.dm_url)
+        }
+      });
+    } catch (logErr) {
+      console.error("Failed to log policy update:", logErr);
+    }
+
     return {
       success: true,
       statusCode: 200,
@@ -239,7 +291,7 @@ async function update_policy_service({ tenantConnection, params, body, tenantId 
 /**
  * delete_policy_service
  */
-async function delete_policy_service({ tenantConnection, params }) {
+async function delete_policy_service({ tenantConnection, params, user }) {
   try {
     const Policy = get_policy_model(tenantConnection);
     const deletedPolicy = await Policy.findOneAndUpdate(
@@ -254,6 +306,31 @@ async function delete_policy_service({ tenantConnection, params }) {
         statusCode: 404,
         message: "Policy not found",
       };
+    }
+
+    // Log activity
+    try {
+      const User = getUserModel(tenantConnection);
+      const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+      const Domain = get_domain_model(tenantConnection);
+      const domainDocs = await Domain.find({ _id: { $in: deletedPolicy.domainIds || [] } }).select("dm_title dm_url").lean();
+      const domainNames = domainDocs.map(d => d.dm_title || d.dm_url);
+
+      await global.createActivityLog(tenantConnection, {
+        userId: loginUser?._id,
+        userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : user?.user_email || "System",
+        action: "DELETE_POLICY",
+        details: `Policy '${deletedPolicy.title}' was deleted by ${loginUser ? loginUser.user_first_name : (user?.user_email || "User")}.`,
+        metadata: { 
+          policyId: deletedPolicy._id, 
+          policyTitle: deletedPolicy.title,
+          isGlobal: deletedPolicy.isGlobal,
+          domainNames: deletedPolicy.isGlobal ? ["All Domains"] : domainNames,
+          domainUrls: deletedPolicy.isGlobal ? ["All Domain URLs"] : domainDocs.map(d => d.dm_url)
+        }
+      });
+    } catch (logErr) {
+      console.error("Failed to log policy deletion:", logErr);
     }
 
     return {
@@ -464,7 +541,7 @@ async function get_policy_content_matches_service({ tenantConnection, query, ten
  * scan_domain_policies_service
  * Triggers the policy scan job on the master microservice
  */
-async function scan_domain_policies_service({ tenantConnection, domainId, tenantId }) {
+async function scan_domain_policies_service({ tenantConnection, domainId, user, tenantId }) {
   try {
     const Domain = get_domain_model(tenantConnection);
 
@@ -529,6 +606,21 @@ async function scan_domain_policies_service({ tenantConnection, domainId, tenant
 
     if (!scanFinished) {
       console.log(`⚠️ [PolicyService] Polling timeout reached. Master job might still be running.`);
+    }
+
+    // Log activity
+    try {
+      const User = getUserModel(tenantConnection);
+      const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+      await global.createActivityLog(tenantConnection, {
+        userId: loginUser?._id,
+        userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+        action: "TRIGGER_POLICY_SCAN",
+        details: `Policy scan triggered manually for domain '${domainName}' by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+        metadata: { domainId: targetObjectId, domainName }
+      });
+    } catch (logErr) {
+      console.error("Failed to log policy scan trigger:", logErr);
     }
 
     return {

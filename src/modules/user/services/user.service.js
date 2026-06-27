@@ -170,6 +170,20 @@ async function create_user_service({ body, file, user, tenantId }) {
 
   const saved = await userDoc.save();
 
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "CREATE_USER",
+      details: `User '${saved.user_first_name} ${saved.user_last_name || ""}' (${saved.user_email}) was created by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { createdUserId: saved.user_id, createdUserEmail: saved.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 201,
     success: true,
@@ -395,6 +409,20 @@ async function update_user_service({ params, body, file, user, tenantId }) {
     };
   }
 
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "UPDATE_USER",
+      details: `User '${updatedUser.user_first_name} ${updatedUser.user_last_name || ""}' (${updatedUser.user_email}) details were updated by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { updatedUserId: updatedUser.user_id, updatedUserEmail: updatedUser.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 200,
     success: true,
@@ -435,6 +463,20 @@ async function delete_user_service({ params, user, tenantId }) {
       success: false,
       message: "User not found",
     };
+  }
+
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "DELETE_USER",
+      details: `User '${updatedUser.user_first_name} ${updatedUser.user_last_name || ""}' (${updatedUser.user_email}) was deleted by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { deletedUserId: updatedUser.user_id, deletedUserEmail: updatedUser.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
   }
 
 
@@ -814,7 +856,7 @@ async function login_user_service({ body, tenantId }) {
   });
 }
 
-async function archive_user_service({ params, tenantId }) {
+async function archive_user_service({ params, user, tenantId }) {
   if (!tenantId) return { statusCode: 400, success: false, message: "tenant_id is required" };
   const tenantConnection = await getTenantConnection(tenantId);
   const User = getUserModel(tenantConnection);
@@ -830,10 +872,24 @@ async function archive_user_service({ params, tenantId }) {
     return { statusCode: 404, success: false, message: "User not found" };
   }
 
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "ARCHIVE_USER",
+      details: `User '${updatedUser.user_first_name} ${updatedUser.user_last_name || ""}' (${updatedUser.user_email}) was archived by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { archivedUserId: updatedUser.user_id, archivedUserEmail: updatedUser.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return { statusCode: 200, success: true, message: "User archived successfully" };
 }
 
-async function restore_user_service({ params, tenantId }) {
+async function restore_user_service({ params, user, tenantId }) {
   if (!tenantId) return { statusCode: 400, success: false, message: "tenant_id is required" };
   const tenantConnection = await getTenantConnection(tenantId);
   const User = getUserModel(tenantConnection);
@@ -849,10 +905,24 @@ async function restore_user_service({ params, tenantId }) {
     return { statusCode: 404, success: false, message: "User not found" };
   }
 
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "RESTORE_USER",
+      details: `User '${updatedUser.user_first_name} ${updatedUser.user_last_name || ""}' (${updatedUser.user_email}) was restored by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { restoredUserId: updatedUser.user_id, restoredUserEmail: updatedUser.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return { statusCode: 200, success: true, message: "User restored successfully" };
 }
 
-async function hard_delete_user_service({ params, tenantId }) {
+async function hard_delete_user_service({ params, user, tenantId }) {
   if (!tenantId) return { statusCode: 400, success: false, message: "tenant_id is required" };
   const tenantConnection = await getTenantConnection(tenantId);
   const User = getUserModel(tenantConnection);
@@ -862,6 +932,20 @@ async function hard_delete_user_service({ params, tenantId }) {
 
   if (!deletedUser) {
     return { statusCode: 404, success: false, message: "User not found" };
+  }
+
+  // Log activity
+  try {
+    const loginUser = user?.user_id ? await User.findOne({ user_id: user?.user_id, user_is_deleted: false }) : null;
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: loginUser ? `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() : "System",
+      action: "HARD_DELETE_USER",
+      details: `User '${deletedUser.user_first_name} ${deletedUser.user_last_name || ""}' (${deletedUser.user_email}) was permanently deleted by ${loginUser ? (loginUser.user_first_name + " " + (loginUser.user_last_name || "")) : "System"}.`,
+      metadata: { deletedUserId: deletedUser.user_id, deletedUserEmail: deletedUser.user_email }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
   }
 
   return { statusCode: 200, success: true, message: "User permanently deleted" };

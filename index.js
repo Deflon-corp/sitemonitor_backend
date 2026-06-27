@@ -20,8 +20,25 @@ const heartbeatRouter = require("./src/modules/heartbeat/routes/heartbeat.routes
 const domainPerformanceRouter = require("./src/modules/performance/routes/domainPerformance.routes");
 const qaRouter = require("./src/modules/qa/routes/qa.routes");
 const accessibilityRouter = require("./src/modules/accessibility/routes/accessibility.routes");
+const logsRouter = require("./src/modules/logs/routes/activityLog.routes");
+const { activityLogSchema } = require("./src/modules/logs/models/activityLog.schema");
 
-
+global.createActivityLog = async (connection, { userId, userName, action, details, metadata = {} }) => {
+  try {
+    const ActivityLog = connection.models.ActivityLog || connection.model("ActivityLog", activityLogSchema, "activity_logs");
+    const log = new ActivityLog({
+      userId,
+      userName,
+      action,
+      details,
+      metadata,
+    });
+    await log.save();
+    return log;
+  } catch (error) {
+    console.error("Error creating activity log:", error);
+  }
+};
 
 const app = express();
 
@@ -134,7 +151,88 @@ app.use("/api/heartbeat", apiRateLimiter, tenantConnectionMiddleware, heartbeatR
 app.use("/api/domain/performance", apiRateLimiter, tenantConnectionMiddleware, domainPerformanceRouter);
 app.use("/api/qa", apiRateLimiter, tenantConnectionMiddleware, qaRouter);
 app.use("/api/accessibility", apiRateLimiter, tenantConnectionMiddleware, accessibilityRouter);
+app.use("/api/logs", apiRateLimiter, tenantConnectionMiddleware, logsRouter);
 
+// Global Search API (Flipkart/Amazon-style unified search)
+app.get("/api/global-search", apiRateLimiter, tenantConnectionMiddleware, async (req, res) => {
+  try {
+    const q = req.query.q || "";
+    if (!q.trim()) {
+      return res.json({ success: true, data: { domains: [], users: [], policies: [], scandata: [] } });
+    }
 
+    const { domainSchema } = require("./src/modules/domain/models/domain.schema");
+    const { policySchema } = require("./src/modules/policy/models/policy.schema");
+    const { domainReportSchema } = require("./src/modules/domain/models/domainReport.schema");
+    const { userSchema } = require("./src/modules/user/models/user.model");
+
+    const Domain = req.tenantConnection.models.Domain || req.tenantConnection.model("Domain", domainSchema, "domains");
+    const User = req.tenantConnection.models.User || req.tenantConnection.model("User", userSchema, "users");
+    const Policy = req.tenantConnection.models.Policy || req.tenantConnection.model("Policy", policySchema, "policies");
+    const DomainReport = req.tenantConnection.models.DomainReport || req.tenantConnection.model("DomainReport", domainReportSchema, "domain_reports");
+
+    const [domains, users, policies, reports] = await Promise.all([
+      Domain.find({
+        $or: [
+          { dm_title: { $regex: q, $options: "i" } },
+          { dm_url: { $regex: q, $options: "i" } }
+        ]
+      }).limit(5),
+
+      User.find({
+        $or: [
+          { user_first_name: { $regex: q, $options: "i" } },
+          { user_last_name: { $regex: q, $options: "i" } },
+          { user_email: { $regex: q, $options: "i" } }
+        ]
+      }).limit(5),
+
+      Policy.find({
+        $or: [
+          { policyName: { $regex: q, $options: "i" } },
+          { policyDescription: { $regex: q, $options: "i" } }
+        ]
+      }).limit(5),
+
+      DomainReport.find({
+        $or: [
+          { url: { $regex: q, $options: "i" } },
+          { "seoImprovements.message": { $regex: q, $options: "i" } }
+        ]
+      })
+      .sort({ scanDate: -1 })
+      .limit(10)
+    ]);
+
+    const formattedScandata = reports.map(r => {
+      const matchingImprovements = (r.seoImprovements || []).filter(imp => 
+        (imp.message || "").toLowerCase().includes(q.toLowerCase())
+      );
+
+      return {
+        id: r._id,
+        url: r.url,
+        domain: r.domain,
+        scanDate: r.scanDate,
+        seoScore: r.seoScore,
+        improvements: matchingImprovements.map(imp => imp.message)
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        domains: domains.map(d => ({ id: d._id, dm_id: d.dm_id, name: d.dm_title, url: d.dm_url })),
+        users: users.map(u => ({ id: u._id, user_id: u.user_id, name: `${u.user_first_name} ${u.user_last_name || ""}`.trim(), email: u.user_email })),
+        policies: policies.map(p => ({ id: p._id, name: p.policyName, desc: p.policyDescription })),
+        scandata: formattedScandata
+      }
+    });
+
+  } catch (error) {
+    console.error("Global search failed:", error);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
 
 module.exports = app;

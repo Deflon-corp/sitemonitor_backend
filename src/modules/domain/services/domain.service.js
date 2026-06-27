@@ -160,6 +160,19 @@ async function create_domain_service({ tenantConnection, body, user, tenantId })
 
   const saved = await domain.save();
 
+  // Log activity
+  try {
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "CREATE_DOMAIN",
+      details: `Domain '${saved.dm_title}' (${saved.dm_url}) was added by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: saved._id, domainUrl: saved.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 201,
     success: true,
@@ -339,6 +352,19 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
     };
   }
 
+  // Log activity
+  try {
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "UPDATE_DOMAIN",
+      details: `Domain '${domain.dm_title}' (${domain.dm_url}) settings were updated by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 200,
     success: true,
@@ -378,6 +404,19 @@ async function delete_domain_service({ tenantConnection, params, user }) {
     };
   }
 
+  // Log activity
+  try {
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "DELETE_DOMAIN",
+      details: `Domain '${domain.dm_title}' (${domain.dm_url}) was deleted by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 200,
     success: true,
@@ -404,6 +443,21 @@ async function archive_domain_service({ tenantConnection, params, user }) {
       success: false,
       message: "Domain not found",
     };
+  }
+
+  // Log activity
+  try {
+    const User = getUserModel(tenantConnection);
+    const loginUser = await User.findOne({ user_id: user?.user_id, user_is_deleted: false });
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "ARCHIVE_DOMAIN",
+      details: `Domain '${domain.dm_title}' (${domain.dm_url}) was archived by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
   }
 
   return {
@@ -434,6 +488,21 @@ async function restore_domain_service({ tenantConnection, params, user }) {
     };
   }
 
+  // Log activity
+  try {
+    const User = getUserModel(tenantConnection);
+    const loginUser = await User.findOne({ user_id: user?.user_id, user_is_deleted: false });
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "RESTORE_DOMAIN",
+      details: `Domain '${domain.dm_title}' (${domain.dm_url}) was restored by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
+  }
+
   return {
     statusCode: 200,
     success: true,
@@ -456,6 +525,21 @@ async function hard_delete_domain_service({ tenantConnection, params, user }) {
       success: false,
       message: "Domain not found",
     };
+  }
+
+  // Log activity
+  try {
+    const User = getUserModel(tenantConnection);
+    const loginUser = await User.findOne({ user_id: user?.user_id, user_is_deleted: false });
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "HARD_DELETE_DOMAIN",
+      details: `Domain '${domain.dm_title}' (${domain.dm_url}) was permanently deleted by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
   }
 
   return {
@@ -1162,6 +1246,21 @@ async function trigger_domain_scan_service({ tenantConnection, params, user }) {
     console.log(`Successfully triggered immediate SEO scan in Master MS for: ${domain.dm_url}`);
   } catch (err) {
     console.error("Failed to trigger immediate SEO scan in Master MS:", err);
+  }
+
+  // Log activity
+  try {
+    const User = getUserModel(tenantConnection);
+    const loginUser = await User.findOne({ user_id: user?.user_id, user_is_deleted: false });
+    await global.createActivityLog(tenantConnection, {
+      userId: loginUser?._id,
+      userName: `${loginUser?.user_first_name || ""} ${loginUser?.user_last_name || ""}`.trim() || user?.user_email,
+      action: "TRIGGER_SCAN",
+      details: `Scan triggered manually for domain '${domain.dm_title}' (${domain.dm_url}) by ${loginUser?.user_first_name || user?.user_email || "User"}.`,
+      metadata: { domainId: domain._id, domainUrl: domain.dm_url }
+    });
+  } catch (logErr) {
+    console.error("Failed to log activity:", logErr);
   }
 
   return {

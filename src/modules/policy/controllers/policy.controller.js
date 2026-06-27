@@ -18,6 +18,7 @@ async function create_policy(req, res) {
     const result = await create_policy_service({
       tenantConnection: req.tenantConnection,
       body: req.body,
+      user: req.user,
       tenantId: req.tenantId,
     });
     return res.status(result.statusCode).json(result);
@@ -69,6 +70,7 @@ async function update_policy(req, res) {
       tenantConnection: req.tenantConnection,
       params: req.params,
       body: req.body,
+      user: req.user,
       tenantId: req.tenantId,
     });
     return res.status(result.statusCode).json(result);
@@ -86,6 +88,7 @@ async function delete_policy(req, res) {
     const result = await delete_policy_service({
       tenantConnection: req.tenantConnection,
       params: req.params,
+      user: req.user,
     });
     return res.status(result.statusCode).json(result);
   } catch (err) {
@@ -144,6 +147,7 @@ async function scan_domain_policies(req, res) {
     const result = await scan_domain_policies_service({
       tenantConnection: req.tenantConnection,
       domainId: req.params.domainId,
+      user: req.user,
       tenantId: req.tenantId,
     });
     return res.status(result.statusCode).json(result);

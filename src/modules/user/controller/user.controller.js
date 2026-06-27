@@ -93,6 +93,7 @@ async function archiveUser(req, res, next) {
   try {
     const result = await userService.archive_user_service({
       params: req.params,
+      user: req.user,
       tenantId: req.tenantId,
     });
     res.status(result.statusCode).json(result);
@@ -105,6 +106,7 @@ async function restoreUser(req, res, next) {
   try {
     const result = await userService.restore_user_service({
       params: req.params,
+      user: req.user,
       tenantId: req.tenantId,
     });
     res.status(result.statusCode).json(result);
@@ -117,6 +119,7 @@ async function hardDeleteUser(req, res, next) {
   try {
     const result = await userService.hard_delete_user_service({
       params: req.params,
+      user: req.user,
       tenantId: req.tenantId,
     });
     res.status(result.statusCode).json(result);
