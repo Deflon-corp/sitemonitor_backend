@@ -27,6 +27,7 @@ const domainSummarySchema = new mongoose.Schema(
     ],
     securitySummary: {
       sslValid: Boolean,
+      sslExpiryDate: Date,
       hasCustom404: Boolean,
     },
     performanceMetrics: {

@@ -94,6 +94,17 @@ const domainSchema = new mongoose.Schema({
     default: true,
   },
 
+  dm_custom_urls: [
+    {
+      type: String,
+      trim: true,
+    },
+  ],
+  dm_last_scan_error: {
+    type: String,
+    default: "",
+  },
+
   // Filters
   dm_path_constraints: [
     {

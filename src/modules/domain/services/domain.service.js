@@ -102,6 +102,7 @@ async function create_domain_service({ tenantConnection, body, user, tenantId })
     dm_mark_403_as_broken,
     dm_ignore_canonical_urls,
     dm_use_language_attribute,
+    dm_custom_urls,
     dm_path_constraints,
     dm_exclude_patterns,
     dm_internal_urls,
@@ -113,6 +114,56 @@ async function create_domain_service({ tenantConnection, body, user, tenantId })
     dm_ignored_spellings,
     dm_terms_conditions,
   } = body || {};
+
+  let hostNorm = "";
+  try {
+    const mainUrl = dm_url.trim().toLowerCase();
+    const mainUrlWithProto = mainUrl.startsWith("http") ? mainUrl : `https://${mainUrl}`;
+    const parsed = new URL(mainUrlWithProto);
+    hostNorm = parsed.hostname.replace(/^www\./, "");
+  } catch (err) {
+    // fallback
+  }
+
+  let validatedCustomUrls = [];
+  if (Array.isArray(dm_custom_urls) && dm_custom_urls.length > 0) {
+    if (dm_custom_urls.length > 10) {
+      return {
+        statusCode: 400,
+        success: false,
+        message: "You can specify a maximum of 10 custom URLs",
+      };
+    }
+    for (let u of dm_custom_urls) {
+      if (typeof u !== "string" || !u.trim()) continue;
+      const trimmedUrl = u.trim();
+      try {
+        const parsedUrl = new URL(trimmedUrl);
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+          return {
+            statusCode: 400,
+            success: false,
+            message: `Custom URL "${trimmedUrl}" must start with http:// or https://`,
+          };
+        }
+        const customHost = parsedUrl.hostname.replace(/^www\./, "").toLowerCase();
+        if (hostNorm && customHost !== hostNorm && !customHost.endsWith("." + hostNorm)) {
+          return {
+            statusCode: 400,
+            success: false,
+            message: `Custom URL "${trimmedUrl}" does not match the domain ${hostNorm}`,
+          };
+        }
+        validatedCustomUrls.push(trimmedUrl);
+      } catch (err) {
+        return {
+          statusCode: 400,
+          success: false,
+          message: `Invalid custom URL: "${trimmedUrl}"`,
+        };
+      }
+    }
+  }
 
   // Check if domain URL already exists
   const existingDomain = await Domain.findOne({
@@ -142,6 +193,7 @@ async function create_domain_service({ tenantConnection, body, user, tenantId })
     dm_mark_403_as_broken: dm_mark_403_as_broken ?? false,
     dm_ignore_canonical_urls: dm_ignore_canonical_urls ?? false,
     dm_use_language_attribute: dm_use_language_attribute ?? true,
+    dm_custom_urls: validatedCustomUrls,
     dm_path_constraints: dm_path_constraints || [],
     dm_exclude_patterns: dm_exclude_patterns || [],
     dm_internal_urls: dm_internal_urls || [],
@@ -272,6 +324,15 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
   // Fetch the logged-in user's MongoDB _id for audit
   const loginUser = await User.findOne({ user_id: user?.user_id, user_is_deleted: false });
 
+  const existing = await Domain.findOne({ dm_id: Number(id), dm_is_deleted: false });
+  if (!existing) {
+    return {
+      statusCode: 404,
+      success: false,
+      message: "Domain not found",
+    };
+  }
+
   const {
     dm_title,
     dm_url,
@@ -285,6 +346,7 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
     dm_mark_403_as_broken,
     dm_ignore_canonical_urls,
     dm_use_language_attribute,
+    dm_custom_urls,
     dm_path_constraints,
     dm_exclude_patterns,
     dm_internal_urls,
@@ -297,6 +359,59 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
     dm_ignored_spellings,
     dm_terms_conditions,
   } = body || {};
+
+  let hostNorm = "";
+  try {
+    const mainUrl = (dm_url || existing.dm_url).trim().toLowerCase();
+    const mainUrlWithProto = mainUrl.startsWith("http") ? mainUrl : `https://${mainUrl}`;
+    const parsed = new URL(mainUrlWithProto);
+    hostNorm = parsed.hostname.replace(/^www\./, "");
+  } catch (err) {
+    // fallback
+  }
+
+  let validatedCustomUrls = null;
+  if (dm_custom_urls != null) {
+    validatedCustomUrls = [];
+    if (Array.isArray(dm_custom_urls) && dm_custom_urls.length > 0) {
+      if (dm_custom_urls.length > 10) {
+        return {
+          statusCode: 400,
+          success: false,
+          message: "You can specify a maximum of 10 custom URLs",
+        };
+      }
+      for (let u of dm_custom_urls) {
+        if (typeof u !== "string" || !u.trim()) continue;
+        const trimmedUrl = u.trim();
+        try {
+          const parsedUrl = new URL(trimmedUrl);
+          if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+            return {
+              statusCode: 400,
+              success: false,
+              message: `Custom URL "${trimmedUrl}" must start with http:// or https://`,
+            };
+          }
+          const customHost = parsedUrl.hostname.replace(/^www\./, "").toLowerCase();
+          if (hostNorm && customHost !== hostNorm && !customHost.endsWith("." + hostNorm)) {
+            return {
+              statusCode: 400,
+              success: false,
+              message: `Custom URL "${trimmedUrl}" does not match the domain ${hostNorm}`,
+            };
+          }
+          validatedCustomUrls.push(trimmedUrl);
+        } catch (err) {
+          return {
+            statusCode: 400,
+            success: false,
+            message: `Invalid custom URL: "${trimmedUrl}"`,
+          };
+        }
+      }
+    }
+  }
 
   const update = {};
   if (dm_title != null) update.dm_title = dm_title;
@@ -311,6 +426,7 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
   if (dm_mark_403_as_broken != null) update.dm_mark_403_as_broken = dm_mark_403_as_broken;
   if (dm_ignore_canonical_urls != null) update.dm_ignore_canonical_urls = dm_ignore_canonical_urls;
   if (dm_use_language_attribute != null) update.dm_use_language_attribute = dm_use_language_attribute;
+  if (validatedCustomUrls != null) update.dm_custom_urls = validatedCustomUrls;
   if (dm_path_constraints != null) update.dm_path_constraints = dm_path_constraints;
   if (dm_exclude_patterns != null) update.dm_exclude_patterns = dm_exclude_patterns;
   if (dm_internal_urls != null) update.dm_internal_urls = dm_internal_urls;
@@ -323,12 +439,9 @@ async function update_domain_service({ tenantConnection, params, body, user, ten
   
   // Recalculate next scan if frequency changes
   if (dm_scan_frequency != null || dm_frequency_type != null) {
-      const existing = await Domain.findOne({ dm_id: Number(id), dm_is_deleted: false });
-      if (existing) {
-          const newFreq = dm_scan_frequency ?? existing.dm_scan_frequency;
-          const newType = dm_frequency_type ?? existing.dm_frequency_type;
-          update.dm_next_scan_at = calculateNextScanAt(newFreq, newType, "00:00", existing.dm_last_scan_at || new Date());
-      }
+      const newFreq = dm_scan_frequency ?? existing.dm_scan_frequency;
+      const newType = dm_frequency_type ?? existing.dm_frequency_type;
+      update.dm_next_scan_at = calculateNextScanAt(newFreq, newType, "00:00", existing.dm_last_scan_at || new Date());
   }
 
   if (dm_status != null) update.dm_status = dm_status;
@@ -1240,7 +1353,8 @@ async function trigger_domain_scan_service({ tenantConnection, params, user }) {
         dm_render_pages_execute_js: domain.dm_render_pages_execute_js ?? false,
         sourceDb: tenantConnection.name,
         sourceUri: process.env.DB_URL,
-        sourceDomainDocId: domain._id
+        sourceDomainDocId: domain._id,
+        dm_custom_urls: domain.dm_custom_urls || []
       })
     });
     console.log(`Successfully triggered immediate SEO scan in Master MS for: ${domain.dm_url}`);

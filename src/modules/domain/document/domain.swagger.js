@@ -39,6 +39,10 @@
  *           type: boolean
  *         dm_use_language_attribute:
  *           type: boolean
+ *         dm_custom_urls:
+ *           type: array
+ *           items:
+ *             type: string
  *         dm_path_constraints:
  *           type: array
  *           items:
@@ -109,6 +113,10 @@
  *         dm_use_language_attribute:
  *           type: boolean
  *         dm_path_constraints:
+ *           type: array
+ *           items:
+ *             type: string
+ *         dm_custom_urls:
  *           type: array
  *           items:
  *             type: string
